@@ -1,6 +1,6 @@
 {
   "name": "new-folder",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "electron-main.js",
   "scripts": {
     "start": "electron .",
@@ -34,7 +34,9 @@
     },
     "files": [
       "**/*",
-      "!node_modules/**/*",
+      "node_modules/electron-updater/**/*"
+    ],
+    "asarUnpack": [
       "node_modules/electron-updater/**/*"
     ]
   },
