@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📋 سجل الإصلاحات والمبيعات</title>
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://www.google.com; connect-src 'self' https://raw.githubusercontent.com https://api.telegram.org;">
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body>
+
+    <h2>📋 سجل الإصلاحات والمبيعات</h2>
+
+
+    <table id="recordsTable" border="1">
+        <thead>
+            <tr>
+                <th>التاريخ</th>
+                <th>النوع</th>
+                <th>الاسم</th>
+                <th>الهاتف</th>
+                <th>التفاصيل</th>
+                <th>الحالة</th>
+                <th>المبلغ</th>
+                <th>التحكم</th>
+            </tr>
+
+        </thead>
+        <tbody>
+            <!-- البيانات هتتحط هنا -->
+        </tbody>
+    </table>
+
+    <div id="summarySection"
+        style="margin: 20px 0; padding: 15px; background: #e8f4fd; border-radius: 8px; border: 1px solid #3498db; text-align: center;">
+        <h3 id="dailyTotalDisplay" style="margin: 0; color: #2c3e50;">💰 إجمالي اليوم: 0 ج.م</h3>
+    </div>
+
+    <button id="1128758021" class="saveBtn">💾 حفظ وإرسال إلى التليجرام</button>
+    <p id="message"></p>
+
+
+
+    <div class="back-btn">
+        <a href="index.html" class="btn">🏠 رجوع للرئيسية</a>
+    </div>
+
+    <!-- نموذج كلمة المرور الذي يظهر عند الحاجة -->
+    <div id="passwordModal"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); justify-content: center; align-items: center;">
+        <div style="background: white; padding: 20px; border-radius: 8px; text-align: center;">
+            <h2>أدخل كلمة المرور</h2>
+            <input type="password" id="password" placeholder="ادخل كلمة المرور"
+                style="padding: 10px; margin: 10px 0; border-radius: 6px; border: 1px solid #ccc;">
+            <button id="submitPassword"
+                style="padding: 10px 20px; background-color: #3498db; color: white; border-radius: 6px;">إرسال</button>
+        </div>
+
+    </div>
+
+    <script>
+        const BOT_TOKEN = "8499366707:AAFgYQf25seW_zXu-B7gOe1IBk8DdTugb_U";
+        const OLD_CHAT_ID = "1724117996";
+        const NEW_CHAT_ID = "";
+
+        // نظام الإشعارات الجديد
+        function showNotification(message, type = 'success') {
+            const container = document.getElementById('notificationContainer') || createNotificationContainer();
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `<span>${message}</span>`;
+            container.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.animation = 'fadeOut 0.5s forwards';
+                setTimeout(() => notification.remove(), 500);
+            }, 3000);
+        }
+
+        function createNotificationContainer() {
+            const container = document.createElement('div');
+            container.id = 'notificationContainer';
+            container.className = 'notification-container';
+            document.body.appendChild(container);
+            return container;
+        }
+
+        const tableBody = document.querySelector("#recordsTable tbody");
+        const message = document.getElementById("message");
+
+        let records = JSON.parse(localStorage.getItem("records")) || [];
+
+        function renderTable() {
+            tableBody.innerHTML = "";
+            let dailyTotal = 0;
+            const today = new Date().toLocaleDateString();
+
+            if (records.length === 0) {
+                const row = document.createElement("tr");
+                row.innerHTML = `<td colspan="6" style="text-align:center;">⚠️ لا توجد بيانات محفوظة بعد</td>`;
+                tableBody.appendChild(row);
+                document.getElementById("dailyTotalDisplay").textContent = `💰 إجمالي اليوم: 0 ج.م`;
+                return;
+            }
+
+            records.forEach((r, index) => {
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td>${r.date}</td>
+                    <td>${r.type}</td>
+                    <td>${r.customer}</td>
+                    <td>${r.phone || "—"}</td>
+                    <td>${r.problem || r.device || "—"}</td>
+                    <td>${r.status || "—"}</td>
+                    <td>${r.price} ج.م</td>
+                    <td><button class="deleteBtn" data-index="${index}">🗑️ مسح</button></td>
+                `;
+                tableBody.appendChild(row);
+
+                // حساب إجمالي اليوم فقط حسب الحالة
+                if (r.date === today) {
+                    if (r.type === "بيع" || (r.type === "صيانة" && r.status === "تم")) {
+                        dailyTotal += Number(r.price) || 0;
+                    }
+                }
+            });
+
+            document.getElementById("dailyTotalDisplay").textContent = `💰 إجمالي اليوم (${today}): ${dailyTotal} ج.م`;
+        }
+
+        renderTable();
+
+        // حدث حذف السجل مع نافذة الباسورد
+        tableBody.addEventListener("click", async (event) => {
+            if (!(event.target && event.target.classList.contains("deleteBtn"))) return;
+
+            const index = Number(event.target.getAttribute("data-index"));
+            if (isNaN(index) || !records[index]) return;
+
+            const deletedRecord = records[index];
+
+            // عرض نافذة الباسورد
+            document.getElementById('passwordModal').style.display = 'flex';
+            document.getElementById('password').value = '';
+
+            // إزالة أي مستمع سابق لتجنب التكرار
+            const submitBtn = document.getElementById('submitPassword');
+            const newSubmitBtn = submitBtn.cloneNode(true);
+            submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
+
+            newSubmitBtn.addEventListener('click', async function () {
+                const enteredPassword = document.getElementById('password').value;
+
+                if (enteredPassword === '11225588') {
+                    let text = "<b>🚨 تم مسح سجل الإصلاحات والمبيعات</b>\n\n";
+                    text += `🕓 <b>التاريخ:</b> ${deletedRecord.date}\n`;
+                    text += `📦 <b>النوع:</b> ${deletedRecord.type}\n`;
+                    text += `👤 <b>الاسم:</b> ${deletedRecord.customer}\n`;
+                    text += `🧾 <b>تفاصيل:</b> ${deletedRecord.problem || deletedRecord.device || "—"}\n`;
+                    text += `💰 <b>المبلغ:</b> ${deletedRecord.price}\n`;
+                    text += "----------------------\n";
+
+                    try {
+                        const promises = [];
+                        if (OLD_CHAT_ID) {
+                            promises.push(fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ chat_id: OLD_CHAT_ID, text, parse_mode: "HTML" })
+                            }));
+                        }
+                        if (NEW_CHAT_ID) {
+                            promises.push(fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ chat_id: NEW_CHAT_ID, text, parse_mode: "HTML" })
+                            }));
+                        }
+
+                        if (promises.length > 0) {
+                            await Promise.all(promises);
+                        }
+
+                        records.splice(index, 1);
+                        localStorage.setItem("records", JSON.stringify(records));
+                        renderTable();
+                        showNotification("🗑️ تم مسح السجل بنجاح");
+                    } catch (err) {
+                        console.error("خطأ أثناء الإرسال:", err);
+                        showNotification("⚠️ تم الحذف محلياً ولكن فشل إرسال الإشعار", "warning");
+                        records.splice(index, 1);
+                        localStorage.setItem("records", JSON.stringify(records));
+                        renderTable();
+                    }
+                    document.getElementById('passwordModal').style.display = 'none';
+                } else {
+                    showNotification("❌ كلمة المرور خاطئة", "error");
+                }
+            });
+        });
+
+        // زر الحفظ العام
+        document.querySelectorAll(".saveBtn").forEach(saveBtn => {
+            saveBtn.addEventListener("click", async () => {
+                const message = document.getElementById("message");
+                if (records.length === 0) {
+                    message.textContent = "⚠️ لا يوجد بيانات لإرسالها.";
+                    message.style.color = "orange";
+                    return;
+                }
+
+                let text = "<b>📋 سجل الإصلاحات والمبيعات</b>\n\n";
+                let dailyTotal = 0;
+                const today = new Date().toLocaleDateString();
+
+                records.forEach(r => {
+                    text += `🕓 <b>التاريخ:</b> ${r.date}\n`;
+                    text += `📦 <b>النوع:</b> ${r.type}\n`;
+                    text += `👤 <b>الاسم:</b> ${r.customer}\n`;
+                    text += `📞 <b>الهاتف:</b> ${r.phone || "—"}\n`;
+                    text += `🧾 <b>تفاصيل:</b> ${r.problem || r.device || "—"}\n`;
+                    text += `🚥 <b>الحالة:</b> ${r.status || "—"}\n`;
+                    text += `💰 <b>المبلغ:</b> ${r.price}\n`;
+                    text += "----------------------\n";
+
+                    if (r.date === today) {
+                        if (r.type === "بيع" || (r.type === "صيانة" && r.status === "تم")) {
+                            dailyTotal += Number(r.price) || 0;
+                        }
+                    }
+                });
+
+                text += `\n💰 <b>إجمالي اليوم (${today}):</b> ${dailyTotal} ج.م`;
+
+                try {
+                    const promises = [];
+                    if (OLD_CHAT_ID) {
+                        promises.push(fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ chat_id: OLD_CHAT_ID, text, parse_mode: "HTML" })
+                        }));
+                    }
+                    if (NEW_CHAT_ID) {
+                        promises.push(fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ chat_id: NEW_CHAT_ID, text, parse_mode: "HTML" })
+                        }));
+                    }
+
+                    if (promises.length === 0) {
+                        message.textContent = "⚠️ لم يتم إعداد معرفات تليجرام.";
+                        message.style.color = "orange";
+                        return;
+                    }
+
+                    const responses = await Promise.all(promises);
+                    const allOk = responses.every(r => r.ok);
+
+                    if (allOk) {
+                        message.textContent = "✅ تم إرسال البيانات إلى تليجرام بنجاح!";
+                        message.style.color = "green";
+                    } else {
+                        message.textContent = "❌ خطأ في إرسال بعض البيانات إلى تليجرام!";
+                        message.style.color = "red";
+                    }
+                } catch (err) {
+                    console.error("خطأ:", err);
+                    message.textContent = "❌ حدث خطأ أثناء الإرسال!";
+                    message.style.color = "red";
+                }
+            });
+        });
+        /* ===== إعدادات لازم تغيرها فقط ===== */
+        const clientID = "2"; // رقم العميل عندك على الجهاز ده
+        const STATUS_URL = "https://raw.githubusercontent.com/Mahmuod556/status/refs/heads/main/status.json"; // ضع هنا رابط RAW اللي نسخته
+        /* =================================== */
+
+        let isOffline = false;
+        let isBlockedShown = false;
+        let originalBodyContent = ""; // هنحفظ فيها محتوى الصفحة الأصلي
+
+        function saveOriginalContent() {
+            if (!originalBodyContent) {
+                originalBodyContent = document.body.innerHTML;
+            }
+        }
+
+        function showOfflineScreen() {
+            if (!isOffline) {
+                isOffline = true;
+                saveOriginalContent();
+                showNotification("⚠️ الاتصال بالإنترنت مقطوع", "error");
+                document.body.innerHTML = `
+            <h2 style="text-align:center; margin-top:50px;">لا يوجد اتصال بالإنترنت</h2>
+        `;
+            }
+        }
+
+        function showBlockedScreen() {
+            if (!isBlockedShown) {
+                isBlockedShown = true;
+                saveOriginalContent();
+                showNotification("🚫 تم إيقاف المزامنة لعدم التفعيل", "error");
+                document.body.innerHTML = `
+            <h2 style="text-align:center; margin-top:50px;">
+                تم إيقاف البرنامج — برجاء التواصل مع الإدارة.
+            </h2>
+        `;
+            }
+        }
+
+        function restoreOriginalContent() {
+            if (originalBodyContent) {
+                document.body.innerHTML = originalBodyContent;
+                originalBodyContent = ""; // نمسحها بعد ما نرجعها
+            }
+        }
+
+        async function checkStatusOnline() {
+            if (!navigator.onLine) return;
+            try {
+                const res = await fetch(STATUS_URL + "?nocache=" + Math.random(), { cache: "no-store" });
+                if (!res.ok) throw new Error("status fetch failed");
+                const data = await res.json();
+                if (data[clientID] === "blocked") {
+                    showBlockedScreen();
+                } else if (isBlockedShown) {
+                    location.reload();
+                }
+            } catch (e) {
+                console.warn("Silent check failed:", e);
+            }
+        }
+
+        function checkInternetFast() {
+            if (!navigator.onLine) {
+                if (!isOffline) {
+                    isOffline = true;
+                    showNotification("⚠️ انقطع الاتصال بالإنترنت (صامت)", "warning");
+                }
+                return;
+            }
+            let img = new Image();
+            img.src = "https://www.google.com/favicon.ico?" + Math.random();
+            img.onload = function () {
+                if (isOffline) {
+                    isOffline = false;
+                    showNotification("✅ عاد الاتصال بالإنترنت", "success");
+                    checkStatusOnline();
+                }
+            };
+            img.onerror = function () { console.warn("Check failed"); };
+        }
+
+        setInterval(checkInternetFast, 10000);
+        setInterval(checkStatusOnline, 30000);
+
+        // فحص أول مرة لما الصفحة تفتح
+        checkInternetFast();
+        checkStatusOnline();
+
+
+    </script>
+
+</body>
+
+</html>

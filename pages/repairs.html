@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>الورشة</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/ui_helpers.js"></script>
+</head>
+
+<body>
+
+    <header>
+        <h1 id="workshopTitle" style="cursor:pointer">الصيانه</h1>
+    </header>
+
+    <main>
+        <section class="form-section">
+            <h2>إضافة معاملة جديدة</h2>
+            <form id="repairForm">
+                <input type="text" id="customerName" placeholder="اسم العميل" required>
+                <input type="text" id="phoneModel" placeholder="رقم العميل" required>
+                <input type="text" id="problem" placeholder="النوع" required>
+                <input type="number" id="price" placeholder="السعر" required>
+                <select id="status">
+                    <option value="تحت التنفيذ">تحت التنفيذ</option>
+                    <option value="تم">تم</option>
+                    <option value="لم يتم">لم يتم</option>
+                </select>
+                <button type="submit" class="btn">💾 حفظ المعاملة</button>
+            </form>
+        </section>
+
+        <section class="table-section">
+            <h2>الطلبات</h2>
+            <table id="repairsTable">
+                <thead>
+                    <tr>
+                        <th>العميل</th>
+                        <th>رقم العميل</th>
+                        <th>النوع</th>
+                        <th>السعر</th>
+                        <th>الحالة</th>
+                        <th>تاريخ التسجيل</th>
+                        <th>تحكم</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- البيانات ستتم إضافتها هنا تلقائيًا -->
+                </tbody>
+            </table>
+        </section>
+
+        <div class="back-btn">
+            <a href="index.html" class="btn">🏠 رجوع للرئيسية</a>
+        </div>
+    </main>
+
+    <!-- نموذج كلمة المرور -->
+    <div id="passwordModal"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); justify-content: center; align-items: center; z-index: 1000;">
+        <div style="background: white; padding: 20px; border-radius: 8px; text-align: center; position: relative;">
+            <span id="closePass"
+                style="position:absolute; top:10px; left:10px; cursor:pointer; font-size:20px; font-weight:bold;">×</span>
+            <h2>أدخل كلمة المرور</h2>
+            <input type="password" id="password" placeholder="ادخل كلمة المرور"
+                style="padding: 10px; margin: 10px 0; border-radius: 6px; border: 1px solid #ccc;">
+            <div>
+                <button id="submitPassword"
+                    style="padding: 10px 20px; background-color: #3498db; color: white; border-radius: 6px; border: none; cursor: pointer;">إرسال</button>
+                <button id="cancelPassword"
+                    style="padding: 10px 20px; background-color: #e74c3c; color: white; border-radius: 6px; border: none; cursor: pointer; margin-right: 10px;">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- نموذج تصفير اليوم -->
+    <div id="resetModal" style="
+        display:none;
+        position:fixed;
+        top:0;left:0;
+        width:100%;height:100%;
+        background:rgba(0,0,0,.5);
+        justify-content:center;
+        align-items:center;
+        z-index:9999;">
+        <div style="background:#fff;padding:20px;border-radius:8px;text-align:center;">
+            <h3>تصفير اليوم</h3>
+            <input type="password" id="resetPass" placeholder="كلمة المرور">
+            <br><br>
+            <button onclick="confirmReset()">تأكيد</button>
+            <button onclick="closeReset()">إلغاء</button>
+        </div>
+    </div>
+
+    <script>
+        const BOT_TOKEN = "8582531529:AAFD8mdyDSXfo__MqcvhV8KbQUKSNNjUuC8";
+        const OLD_CHAT_ID = "1724117996";
+        const NEW_CHAT_ID = "";
+
+        let repairs = JSON.parse(localStorage.getItem("repairs")) || [];
+        let currentDeleteId = null;
+
+        // نظام الإشعارات الجديد
+        function showNotification(message, type = 'success') {
+            const container = document.getElementById('notificationContainer') || createNotificationContainer();
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `<span>${message}</span>`;
+            container.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.animation = 'fadeOut 0.5s forwards';
+                setTimeout(() => notification.remove(), 500);
+            }, 3000);
+        }
+
+        function createNotificationContainer() {
+            const container = document.createElement('div');
+            container.id = 'notificationContainer';
+            container.className = 'notification-container';
+            document.body.appendChild(container);
+            return container;
+        }
+
+        function setFocus() {
+            const input = document.getElementById("customerName");
+            if (input) {
+                input.focus();
+                input.select();
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            showRepairs();
+            showRecords();
+        });
+
+        // Form submission - متناسق مع حقول HTML
+        const repairForm = document.getElementById("repairForm");
+        repairForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+
+            const customerName = document.getElementById("customerName").value.trim();
+            const phoneModel = document.getElementById("phoneModel").value.trim();
+            const problem = document.getElementById("problem").value.trim();
+            const price = document.getElementById("price").value.trim();
+            const status = document.getElementById("status").value.trim();
+            const date = new Date().toLocaleDateString();
+
+            if (!customerName || !phoneModel || !problem || !price || !status) {
+                showNotification("⚠️ الرجاء ملء جميع الحقول!", "warning");
+                return;
+            }
+
+            const newRepair = { id: Date.now(), customerName, phoneModel, problem, price, status, date: new Date().toLocaleDateString() };
+            repairs.push(newRepair);
+            localStorage.setItem("repairs", JSON.stringify(repairs));
+
+            addToRecords(newRepair);
+            addToGuardHistory(newRepair);
+            sendToTelegram(newRepair);
+
+            // إطلاق حدث مخصص لإعلام صفحة الجارد بالتحديث
+            notifyGuardPage();
+
+            repairForm.reset();
+            showRepairs();
+            showRecords();
+            showNotification("✅ تم إضافة الجهاز بنجاح");
+            setFocus();
+        });
+
+        // عرض قائمة الطلبات - متناسق مع أعمدة الجدول
+        function showRepairs() {
+            const tableBody = document.querySelector("#repairsTable tbody");
+            tableBody.innerHTML = "";
+            repairs.forEach((repair) => {
+                const row = document.createElement("tr");
+                row.innerHTML = `
+            <td>${repair.customerName}</td>
+            <td>${repair.phoneModel}</td>
+            <td>${repair.problem}</td>
+            <td>${repair.price} ج.م</td>
+            <td>${repair.status}</td>
+            <td>${repair.date}</td>
+            <td>
+                <button class="edit" onclick="editRepair(${repair.id})" style="margin-bottom:5px;">✏️ تعديل</button>
+                <button onclick="deleteRepair(${repair.id})">🗑️ حذف</button>
+            </td>
+        `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // دالة تعديل الصيانة بدون حذف - معدلة لتعمل مع النماذج المخصصة
+        async function editRepair(id) {
+            const repair = repairs.find(r => r.id === id);
+            if (!repair) return;
+
+            const newStatus = await asyncPrompt("تعديل الحالة:", repair.status);
+            if (newStatus === null) return;
+
+            const newPrice = await asyncPrompt("تعديل السعر:", repair.price);
+            if (newPrice === null) return;
+
+            repair.status = newStatus;
+            repair.price = newPrice;
+
+            localStorage.setItem("repairs", JSON.stringify(repairs));
+            addToGuardHistory(repair); // تحديث البيانات في الجارد أيضاً عند التعديل
+            updateRepairInRecords(repair); // تحديث البيانات في السجل أيضاً
+            showRepairs();
+            showNotification("✅ تم تعديل البيانات بنجاح");
+        }
+
+        // تحديث المعاملة في السجل
+        function updateRepairInRecords(repair) {
+            let records = JSON.parse(localStorage.getItem("records")) || [];
+            const index = records.findIndex(r => r.id === repair.id && r.type === "صيانة");
+            if (index !== -1) {
+                records[index].customer = repair.customerName;
+                records[index].phone = repair.phoneModel;
+                records[index].problem = repair.problem;
+                records[index].status = repair.status;
+                records[index].price = repair.price;
+                localStorage.setItem("records", JSON.stringify(records));
+            }
+        }
+
+        // عرض السجلات
+        function showRecords() {
+            const records = JSON.parse(localStorage.getItem("records")) || [];
+            const tableBody = document.querySelector("#recordsTable tbody");
+            if (!tableBody) return;
+            tableBody.innerHTML = "";
+
+            records.forEach((record) => {
+                const row = document.createElement("tr");
+                row.innerHTML = `
+            <td>${record.customer}</td>
+            <td>${record.device}</td>
+            <td>${record.problem}</td>
+            <td>${record.price} ج.م</td>
+            <td>${record.status}</td>
+            <td>${record.date}</td>
+        `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // حذف معاملة
+        function deleteRepair(id) {
+            currentDeleteId = id;
+            document.getElementById('passwordModal').style.display = 'flex';
+            document.getElementById('password').value = '';
+        }
+
+        // Event Listener لزر إرسال كلمة المرور (مرة واحدة فقط)
+        document.getElementById('submitPassword').addEventListener('click', function () {
+            const enteredPassword = document.getElementById('password').value;
+
+            if (enteredPassword === "11225588") {
+                const repairToDelete = repairs.find(r => r.id === currentDeleteId);
+
+                if (repairToDelete) {
+                    repairs = repairs.filter(r => r.id !== currentDeleteId);
+                    localStorage.setItem("repairs", JSON.stringify(repairs));
+                    deleteFromRecords(currentDeleteId);
+                    sendDeleteNotificationToTelegram(repairToDelete);
+
+                    // إطلاق حدث لإعلام صفحة الجارد بالحذف
+                    notifyGuardPage();
+
+                    showRepairs();
+                    showRecords();
+                }
+
+                document.getElementById('passwordModal').style.display = 'none';
+                document.getElementById('password').value = "";
+                showNotification("🗑️ تم حذف الجهاز بنجاح");
+            } else {
+                showNotification("❌ كلمة المرور خاطئة", "error");
+            }
+        });
+
+        // Event Listener لزر الإلغاء
+        document.getElementById('cancelPassword').addEventListener('click', function () {
+            document.getElementById('passwordModal').style.display = 'none';
+            document.getElementById('password').value = '';
+        });
+
+        // Event Listener لزر الإغلاق (×)
+        document.getElementById("closePass").addEventListener('click', function () {
+            document.getElementById("passwordModal").style.display = "none";
+            document.getElementById('password').value = '';
+        });
+
+        // حذف من السجلات
+        function deleteFromRecords(id) {
+            let records = JSON.parse(localStorage.getItem("records")) || [];
+            records = records.filter(record => record.id !== id);
+            localStorage.setItem("records", JSON.stringify(records));
+        }
+
+        // إرسال إشعار بحذف معاملة إلى التليجرام
+        function sendDeleteNotificationToTelegram(repair) {
+            const message = `
+⚠️ تم حذف معاملة:
+العميل: ${repair.customerName}
+رقم العميل: ${repair.phoneModel}
+النوع: ${repair.problem}
+السعر: ${repair.price} ج.م
+الحالة: ${repair.status}
+تاريخ التسجيل: ${repair.date}
+    `;
+            sendMessageToTelegram(OLD_CHAT_ID, message);
+            sendMessageToTelegram(NEW_CHAT_ID, message);
+        }
+
+        // إرسال معاملة جديدة إلى التليجرام
+        function sendToTelegram(repair) {
+            const message = `
+📱 معاملة جديدة:
+العميل: ${repair.customerName}
+رقم العميل: ${repair.phoneModel}
+النوع: ${repair.problem}
+السعر: ${repair.price} ج.م
+الحالة: ${repair.status}
+تاريخ التسجيل: ${repair.date}
+    `;
+            sendMessageToTelegram(OLD_CHAT_ID, message);
+            sendMessageToTelegram(NEW_CHAT_ID, message);
+        }
+
+        // إرسال رسالة إلى التليجرام
+        function sendMessageToTelegram(chatId, message) {
+            if (!chatId) return; // تخطي الإرسال إذا كان المعرف فارغاً
+            const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+            const data = {
+                chat_id: chatId,
+                text: message,
+                parse_mode: "HTML"
+            };
+
+            fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log("Message sent:", data);
+                })
+                .catch(error => console.error("Error sending message:", error));
+        }
+
+        // إضافة المعاملة إلى السجلات
+        function addToRecords(repair) {
+            const records = JSON.parse(localStorage.getItem("records")) || [];
+            records.push({
+                id: repair.id,
+                type: "صيانة",
+                customer: repair.customerName,
+                phone: repair.phoneModel,
+                device: "",
+                problem: repair.problem,
+                price: repair.price,
+                status: repair.status,
+                date: repair.date
+            });
+            localStorage.setItem("records", JSON.stringify(records));
+        }
+
+        // إضافة أو تحديث المعاملة في مخزن الجارد المستقل
+        function addToGuardHistory(repair) {
+            let guardSales = JSON.parse(localStorage.getItem("guardMaintenanceSales")) || [];
+            const index = guardSales.findIndex(r => r.id === repair.id);
+            if (index !== -1) {
+                guardSales[index] = repair;
+            } else {
+                guardSales.push(repair);
+            }
+            localStorage.setItem("guardMaintenanceSales", JSON.stringify(guardSales));
+            localStorage.setItem("guardUpdate", Date.now().toString()); // إشعار صفحة الجارد
+        }
+
+        // وظيفة لإعلام صفحة الجارد بالتحديثات
+        function notifyGuardPage() {
+            // إنشاء حدث مخصص في localStorage لتفعيل المزامنة
+            localStorage.setItem("maintenanceUpdate", Date.now().toString());
+        }
+
+
+
+        // تفعيل تصفير اليوم بالضغط 3 مرات على العنوان
+        let tapCount = 0;
+        let tapTimer = null;
+
+        const workshopTitle = document.getElementById("workshopTitle");
+
+        workshopTitle.addEventListener("click", () => {
+            tapCount++;
+
+            if (tapCount === 1) {
+                tapTimer = setTimeout(() => {
+                    tapCount = 0;
+                }, 800);
+            }
+
+            if (tapCount === 3) {
+                clearTimeout(tapTimer);
+                tapCount = 0;
+                openResetPassword();
+            }
+        });
+
+        function openResetPassword() {
+            document.getElementById("resetModal").style.display = "flex";
+            document.getElementById("resetPass").value = "";
+        }
+
+        function closeReset() {
+            document.getElementById("resetModal").style.display = "none";
+        }
+
+        function confirmReset() {
+            const pass = document.getElementById("resetPass").value;
+
+            if (pass !== "11225588") {
+                showNotification("❌ باس غلط", "error");
+                return;
+            }
+
+            // تصفير اليوم
+            localStorage.removeItem("repairs");
+            localStorage.removeItem("records");
+
+            // إعلام صفحة الجارد بالتصفير
+            notifyGuardPage();
+
+            showNotification("✅ تم تصفير اليوم");
+            setTimeout(() => location.reload(), 1000);
+        }
+
+        /* ===== إعدادات لازم تغيرها فقط ===== */
+        const clientID = "2"; // رقم العميل عندك على الجهاز ده
+        const STATUS_URL = "https://raw.githubusercontent.com/Mahmuod556/status/refs/heads/main/status.json"; // ضع هنا رابط RAW اللي نسخته
+        /* =================================== */
+
+        let isOffline = false;
+        let isBlockedShown = false;
+        let originalBodyContent = ""; // هنحفظ فيها محتوى الصفحة الأصلي
+
+        function saveOriginalContent() {
+            if (!originalBodyContent) {
+                originalBodyContent = document.body.innerHTML;
+            }
+        }
+
+        // إنشاء طبقة التحذير عند تحميل الصفحة
+        const statusOverlay = document.createElement('div');
+        statusOverlay.id = 'statusOverlay';
+        statusOverlay.style.cssText = 'display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:white; z-index:9999; text-align:center; padding-top:50px;';
+        statusOverlay.innerHTML = `
+            <div id="offlineContent" style="display:none;">
+                <h2 style="color:red;">⚠️ لا يوجد اتصال بالإنترنت</h2>
+                <p>برجاء التأكد من الشبكة للتمكن من استخدام البرنامج.</p>
+                <button onclick="location.reload()" style="background:#0078d4; color:white; padding:10px 20px; border-radius:5px; cursor:pointer; border:none;">إعادة محاولة الاتصال</button>
+            </div>
+            <div id="blockedContent" style="display:none;">
+                <h2 style="color:red;">🚫 تم إيقاف البرنامج</h2>
+                <p>برجاء التواصل مع الإدارة لتفعيل الاشتراك.</p>
+            </div>
+        `;
+        document.body.appendChild(statusOverlay);
+
+        function showOfflineScreen() {
+            if (!isOffline) {
+                isOffline = true;
+                const overlay = document.getElementById('statusOverlay');
+                overlay.style.display = 'block';
+                document.getElementById('offlineContent').style.display = 'block';
+                document.getElementById('blockedContent').style.display = 'none';
+            }
+        }
+
+        function showBlockedScreen() {
+            if (!isBlockedShown) {
+                isBlockedShown = true;
+                const overlay = document.getElementById('statusOverlay');
+                overlay.style.display = 'block';
+                document.getElementById('blockedContent').style.display = 'block';
+                document.getElementById('offlineContent').style.display = 'none';
+            }
+        }
+
+        function restoreOriginalContent() {
+            const overlay = document.getElementById('statusOverlay');
+            if (overlay) overlay.style.display = 'none';
+            isOffline = false;
+            isBlockedShown = false;
+        }
+
+        async function checkStatusOnline() {
+            if (!navigator.onLine) {
+                showOfflineScreen();
+                return;
+            }
+            try {
+                const res = await fetch(STATUS_URL + "?nocache=" + Math.random(), { cache: "no-store" });
+                if (!res.ok) throw new Error("status fetch failed");
+                const data = await res.json();
+                if (data[clientID] === "blocked") {
+                    showBlockedScreen();
+                } else {
+                    if (isBlockedShown || isOffline) {
+                        location.reload();
+                    }
+                }
+            } catch (e) {
+                console.warn("Silent check failed:", e);
+            }
+        }
+
+        /* فحص الشبكة بطريقة سريعة وفورية */
+        function checkInternetFast() {
+            if (!navigator.onLine) {
+                if (!isOffline) {
+                    isOffline = true;
+                    showNotification("⚠️ انقطع الاتصال بالإنترنت", "warning");
+                    showOfflineScreen();
+                }
+                return;
+            }
+            let img = new Image();
+            img.src = "https://www.google.com/favicon.ico?" + Math.random();
+            img.onload = function () {
+                if (isOffline) {
+                    isOffline = false;
+                    showNotification("✅ عاد الاتصال بالإنترنت", "success");
+                    restoreOriginalContent();
+                    checkStatusOnline();
+                }
+            };
+            img.onerror = function () {
+                console.warn("Check failed");
+                showOfflineScreen();
+            };
+        }
+
+        // فحص كل 3 ثواني
+        setInterval(checkInternetFast, 3000);
+
+        // وفحص الحالة كل 10 ثواني
+        setInterval(checkStatusOnline, 10000);
+
+        // البدء بالفحص الفوري
+        saveOriginalContent();
+        checkInternetFast();
+        checkStatusOnline();
+
+    </script>
+
+</body>
+
+</html>

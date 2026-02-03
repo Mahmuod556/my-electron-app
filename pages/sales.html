@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>💵 مبيعات الأجهزة</title>
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://www.google.com; connect-src 'self' https://raw.githubusercontent.com https://api.telegram.org;">
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/ui_helpers.js"></script>
+</head>
+
+<body>
+
+    <header>
+        <h1 id="productsHeader">💵 قسم المبيعات</h1>
+    </header>
+
+    <main>
+        <section class="form-section">
+            <h2>إضافة عملية بيع</h2>
+            <form id="salesForm">
+                <input list="productsList" id="productName" placeholder="اسم المنتج" required>
+                <datalist id="productsList"></datalist>
+                <input type="number" id="price" placeholder="السعر" required>
+                <input type="number" id="quantity" placeholder="الكمية" required>
+                <input type="text" id="number" placeholder="رقم العميل" required>
+                <select id="status">
+                    <option value="كاش ">كاش </option>
+                    <option value="محفظة&انستاباي">محفظة&ّانساباي</option>
+                    <option value="فيزا ">فيزا </option>
+                </select>
+                <button type="submit" class="btn">💾 حفظ العملية</button>
+            </form>
+        </section>
+
+        <section class="table-section">
+            <h2>قائمة المبيعات</h2>
+            <table id="salesTable">
+                <thead>
+                    <tr>
+                        <th>المنتج</th>
+                        <th>السعر</th>
+                        <th>الكمية</th>
+                        <th>الإجمالي</th>
+                        <th>التاريخ</th>
+                        <th>رقم العميل</th>
+                        <th>الحالة</th>
+                        <th>إجراءات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- المبيعات هتظهر هنا -->
+                </tbody>
+            </table>
+        </section>
+
+        <section class="summary">
+            <h3>💰 إجمالي المبيعات اليوم: <span id="totalSales">0</span> ج.م</h3>
+        </section>
+
+        <div class="back-btn">
+            <a href="index.html" class="btn">🏠 رجوع للرئيسية</a>
+        </div>
+    </main>
+
+    <!-- نموذج كلمة المرور الذي يظهر عند الحاجة -->
+    <div id="passwordModal"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); justify-content: center; align-items: center; z-index: 1000;">
+        <div style="background: white; padding: 20px; border-radius: 8px; text-align: center;">
+            <h2>أدخل كلمة المرور</h2>
+            <input type="password" id="password" placeholder="ادخل كلمة المرور"
+                style="padding: 10px; margin: 10px 0; border-radius: 6px; border: 1px solid #ccc;">
+            <div>
+                <button id="submitPassword"
+                    style="padding: 10px 20px; background-color: #3498db; color: white; border-radius: 6px; border: none; cursor: pointer;">إرسال</button>
+                <button id="cancelPassword"
+                    style="padding: 10px 20px; background-color: #e74c3c; color: white; border-radius: 6px; border: none; cursor: pointer; margin-right: 10px;">إلغاء</button>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const BOT_TOKEN = "8582531529:AAFD8mdyDSXfo__MqcvhV8KbQUKSNNjUuC8";
+        const OLD_CHAT_ID = "1724117996";
+        const NEW_CHAT_ID = "";
+
+        let sales = JSON.parse(localStorage.getItem("sales")) || [];
+        let currentDeleteId = null;
+
+        // نظام الإشعارات الجديد
+        function showNotification(message, type = 'success') {
+            const container = document.getElementById('notificationContainer') || createNotificationContainer();
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `<span>${message}</span>`;
+            container.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.animation = 'fadeOut 0.5s forwards';
+                setTimeout(() => notification.remove(), 500);
+            }, 3000);
+        }
+
+        function createNotificationContainer() {
+            const container = document.createElement('div');
+            container.id = 'notificationContainer';
+            container.className = 'notification-container';
+            document.body.appendChild(container);
+            return container;
+        }
+
+        function setFocus() {
+            const input = document.getElementById("productName");
+            if (input) {
+                input.focus();
+                input.select();
+            }
+        }
+
+        // ===== ربط المنتجات من صفحة الجارد =====
+        let guardProducts = JSON.parse(localStorage.getItem("products")) || [];
+        let datalist = document.getElementById("productsList");
+        guardProducts.forEach(p => {
+            let option = document.createElement("option");
+            option.value = p.name;
+            datalist.appendChild(option);
+        });
+
+        // السعر تلقائي عند اختيار المنتج
+        document.getElementById("productName").addEventListener("input", function () {
+            let selected = guardProducts.find(p => p.name === this.value);
+            if (selected) document.getElementById("price").value = selected.price;
+        });
+
+        document.addEventListener("DOMContentLoaded", () => {
+            showSales();
+            calculateTotalSales();
+        });
+
+        // Form submission
+        const salesForm = document.getElementById("salesForm");
+        salesForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+
+            const productName = document.getElementById("productName").value.trim();
+            const price = Number(document.getElementById("price").value.trim());
+            const quantity = Number(document.getElementById("quantity").value.trim());
+            const number = document.getElementById("number").value.trim();
+            const status = document.getElementById("status").value;
+
+            let product = guardProducts.find(p => p.name === productName);
+            if (!product) {
+                showNotification("❌ المنتج مش موجود في المخزون", "error");
+                setFocus();
+                return;
+            }
+            if (quantity > product.qty) {
+                showNotification("❌ الكمية المطلوبة أكبر من المتاح", "error");
+                setFocus();
+                return;
+            }
+            product.qty -= quantity;
+            localStorage.setItem("products", JSON.stringify(guardProducts));
+
+            if (!productName || !price || !quantity || !number) {
+                showNotification("⚠️ الرجاء ملء جميع الحقول!", "warning");
+                return;
+            }
+
+            const total = price * quantity;
+            const date = new Date().toLocaleDateString();
+
+            const newSale = { id: Date.now(), productName, price, quantity, total, date, number, status };
+            sales.push(newSale);
+            localStorage.setItem("sales", JSON.stringify(sales));
+
+            addToSalesRecords(newSale);
+            sendToTelegram(newSale);
+
+            salesForm.reset();
+            showSales();
+            calculateTotalSales();
+            showNotification("✅ تم تسجيل العملية بنجاح");
+            setFocus();
+        });
+
+        // عرض المبيعات
+        function showSales() {
+            const tableBody = document.querySelector("#salesTable tbody");
+            tableBody.innerHTML = "";
+            sales.forEach(sale => {
+                const row = document.createElement("tr");
+                row.innerHTML = `
+            <td>${sale.productName}</td>
+            <td>${sale.price} ج.م</td>
+            <td>${sale.quantity}</td>
+            <td>${sale.total} ج.م</td>
+            <td>${sale.date}</td>
+            <td>${sale.number || 'غير محدد'}</td>
+            <td>${sale.status || 'غير محدد'}</td>
+            <td><button onclick="deleteSale(${sale.id})">🗑️ حذف</button></td>
+        `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // حذف عملية بيع
+        function deleteSale(id) {
+            currentDeleteId = id;
+            document.getElementById('passwordModal').style.display = 'flex';
+            document.getElementById('password').value = '';
+        }
+
+        document.getElementById('submitPassword').addEventListener('click', function () {
+            const enteredPassword = document.getElementById('password').value;
+            if (enteredPassword === "11225588") {
+                const saleToDelete = sales.find(s => s.id === currentDeleteId);
+                if (saleToDelete) {
+                    sales = sales.filter(s => s.id !== currentDeleteId);
+                    localStorage.setItem("sales", JSON.stringify(sales));
+                    sendDeleteNotificationToTelegram(saleToDelete);
+                    showSales();
+                    calculateTotalSales();
+                    deleteFromSalesRecords(currentDeleteId);
+                }
+                document.getElementById('passwordModal').style.display = 'none';
+                showNotification("🗑️ تم حذف العملية بنجاح");
+            } else {
+                showNotification("❌ كلمة المرور خاطئة", "error");
+            }
+        });
+
+        document.getElementById('cancelPassword').addEventListener('click', function () {
+            document.getElementById('passwordModal').style.display = 'none';
+            document.getElementById('password').value = '';
+        });
+
+        // حذف السجل
+        function deleteFromSalesRecords(id) {
+            let records = JSON.parse(localStorage.getItem("records")) || [];
+            records = records.filter(record => record.id !== id);
+            localStorage.setItem("records", JSON.stringify(records));
+        }
+
+        // إرسال إشعار للتليجرام
+        function sendDeleteNotificationToTelegram(sale) {
+            const message = `
+⚠️ تم حذف عملية بيع من السجل:
+المنتج: ${sale.productName}
+السعر: ${sale.price} ج.م
+الكمية: ${sale.quantity}
+الإجمالي: ${sale.total} ج.م
+التاريخ: ${sale.date}
+رقم العميل: ${sale.number}
+الحالة: ${sale.status}
+    `;
+            sendMessageToTelegram(OLD_CHAT_ID, message);
+            sendMessageToTelegram(NEW_CHAT_ID, message);
+        }
+
+        // إرسال عملية جديدة للتليجرام
+        function sendToTelegram(sale) {
+            const message = `
+💵 عملية بيع جديدة:
+المنتج: ${sale.productName}
+السعر: ${sale.price} ج.م
+الكمية: ${sale.quantity}
+الإجمالي: ${sale.total} ج.م
+التاريخ: ${sale.date}
+رقم العميل: ${sale.number}
+الحالة: ${sale.status}
+    `;
+            sendMessageToTelegram(OLD_CHAT_ID, message);
+            sendMessageToTelegram(NEW_CHAT_ID, message);
+        }
+
+        function sendMessageToTelegram(chatId, message) {
+            fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: "HTML" })
+            });
+        }
+
+        // إضافة للسجل
+        function addToSalesRecords(sale) {
+            const records = JSON.parse(localStorage.getItem("records")) || [];
+            records.push({
+                id: sale.id,
+                date: sale.date,
+                type: "بيع",
+                customer: sale.productName,
+                phone: sale.number,
+                device: "",
+                problem: `كمية: ${sale.quantity}`,
+                price: sale.total,
+                status: sale.status
+            });
+            localStorage.setItem("records", JSON.stringify(records));
+        }
+
+        // إجمالي المبيعات
+        function calculateTotalSales() {
+            const totalSales = sales.reduce((total, sale) => total + sale.total, 0);
+            document.getElementById("totalSales").textContent = totalSales;
+        }
+
+        // زر تصفير الأوردرات بالضغط 3 مرات على الهيدر
+        let headerClickCount = 0;
+        const header = document.getElementById("productsHeader");
+
+        header.addEventListener("click", () => {
+            headerClickCount++;
+            if (headerClickCount === 3) {
+                headerClickCount = 0;
+                // فتح مودال الباسورد
+                document.getElementById('passwordModal').style.display = 'flex';
+                document.getElementById('password').value = '';
+            }
+            setTimeout(() => { headerClickCount = 0; }, 1000); // لو ما كملش 3 ضغطات في ثانية
+        });
+
+        // زر إرسال كلمة المرور في المودال
+        document.getElementById('submitPassword').addEventListener('click', function () {
+            const enteredPassword = document.getElementById('password').value;
+            if (enteredPassword === "11225588") {
+                document.getElementById('passwordModal').style.display = 'none';
+                // فتح مودال التأكيد
+                const confirmModal = document.createElement('div');
+                confirmModal.id = 'confirmModal';
+                confirmModal.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background-color:rgba(0,0,0,0.5);display:flex;justify-content:center;align-items:center;z-index:1001;";
+                confirmModal.innerHTML = `
+            <div style="background:white;padding:20px;border-radius:8px;text-align:center;">
+                <h2>هل تريد حقًا تصفير جميع الأوردرات؟</h2>
+                <button id="confirmReset" style="padding:10px 20px;margin:5px;background-color:#e74c3c;color:white;border:none;border-radius:6px;cursor:pointer;">نعم</button>
+                <button id="cancelReset" style="padding:10px 20px;margin:5px;background-color:#3498db;color:white;border:none;border-radius:6px;cursor:pointer;">لا</button>
+            </div>
+        `;
+                document.body.appendChild(confirmModal);
+
+                document.getElementById('confirmReset').addEventListener('click', () => {
+                    sales = [];
+                    localStorage.setItem("sales", JSON.stringify(sales));
+                    localStorage.setItem("records", JSON.stringify([]));
+                    document.querySelector("#salesTable tbody").innerHTML = "";
+                    document.getElementById("totalSales").textContent = "0";
+                    showNotification("✅ تم تصفير جميع الأوردرات!");
+                    confirmModal.remove();
+                });
+
+                document.getElementById('cancelReset').addEventListener('click', () => {
+                    confirmModal.remove();
+                });
+
+            } else {
+                showNotification("❌ كلمة المرور خاطئة!", "error");
+            }
+
+        });
+
+        // إنشاء طبقة التحذير عند تحميل الصفحة
+        const statusOverlay = document.createElement('div');
+        statusOverlay.id = 'statusOverlay';
+        statusOverlay.style.cssText = 'display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:white; z-index:9999; text-align:center; padding-top:50px;';
+        statusOverlay.innerHTML = `
+            <div id="offlineContent" style="display:none;">
+                <h2 style="color:red;">⚠️ لا يوجد اتصال بالإنترنت</h2>
+                <p>برجاء التأكد من الشبكة للتمكن من استخدام البرنامج.</p>
+                <button onclick="location.reload()" style="background:#0078d4; color:white; padding:10px 20px; border-radius:5px; cursor:pointer; border:none;">إعادة محاولة الاتصال</button>
+            </div>
+            <div id="blockedContent" style="display:none;">
+                <h2 style="color:red;">🚫 تم إيقاف البرنامج</h2>
+                <p>برجاء التواصل مع الإدارة لتفعيل الاشتراك.</p>
+            </div>
+        `;
+        document.body.appendChild(statusOverlay);
+        /* ===== إعدادات لازم تغيرها فقط ===== */
+        const clientID = "2"; // رقم العميل عندك على الجهاز ده
+        const STATUS_URL = "https://raw.githubusercontent.com/Mahmuod556/status/refs/heads/main/status.json"; // ضع هنا رابط RAW اللي نسخته
+        /* =================================== */
+
+        let isOffline = false;
+        let isBlockedShown = false;
+        let originalBodyContent = ""; // هنحفظ فيها محتوى الصفحة الأصلي
+
+        function saveOriginalContent() {
+            if (!originalBodyContent) {
+                originalBodyContent = document.body.innerHTML;
+            }
+        }
+
+        function showOfflineScreen() {
+            if (!isOffline) {
+                isOffline = true;
+                const overlay = document.getElementById('statusOverlay');
+                overlay.style.display = 'block';
+                document.getElementById('offlineContent').style.display = 'block';
+                document.getElementById('blockedContent').style.display = 'none';
+            }
+        }
+
+        function showBlockedScreen() {
+            if (!isBlockedShown) {
+                isBlockedShown = true;
+                const overlay = document.getElementById('statusOverlay');
+                overlay.style.display = 'block';
+                document.getElementById('blockedContent').style.display = 'block';
+                document.getElementById('offlineContent').style.display = 'none';
+            }
+        }
+
+        function restoreOriginalContent() {
+            const overlay = document.getElementById('statusOverlay');
+            if (overlay) overlay.style.display = 'none';
+            isOffline = false;
+            isBlockedShown = false;
+        }
+
+        async function checkStatusOnline() {
+            if (!navigator.onLine) return;
+            try {
+                const res = await fetch(STATUS_URL + "?nocache=" + Math.random(), { cache: "no-store" });
+                if (!res.ok) throw new Error("status fetch failed");
+                const data = await res.json();
+                if (data[clientID] === "blocked") {
+                    showBlockedScreen();
+                } else if (isBlockedShown) {
+                    location.reload();
+                }
+            } catch (e) {
+                console.warn("Silent check failed:", e);
+            }
+        }
+
+        function checkInternetFast() {
+            if (!navigator.onLine) {
+                if (!isOffline) {
+                    isOffline = true;
+                    showNotification("⚠️ انقطع الاتصال بالإنترنت", "warning");
+                }
+                return;
+            }
+            let img = new Image();
+            img.src = "https://www.google.com/favicon.ico?" + Math.random();
+            img.onload = function () {
+                if (isOffline) {
+                    isOffline = false;
+                    showNotification("✅ عاد الاتصال بالإنترنت", "success");
+                    checkStatusOnline();
+                }
+            };
+            img.onerror = function () { console.warn("Check failed"); };
+        }
+
+        setInterval(checkInternetFast, 10000);
+        setInterval(checkStatusOnline, 30000);
+        checkInternetFast();
+        checkStatusOnline();
+    </script>
+
+</body>
+
+</html>
